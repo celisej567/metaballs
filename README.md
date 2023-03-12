@@ -4,6 +4,7 @@ What difference? My fork have:
 * Rendering optimisations.
 * Editor preview.
 * Editor Spawn Menu.
+(make sure that Container script has references to shader and material)
 
 Now goes default readme.
 # Unity 3D metaballs
