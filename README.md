@@ -1,3 +1,11 @@
+#Fork of the dario-zubovic/metaballs repo.
+
+What difference? My fork have:
+* Rendering optimisations.
+* Editor preview.
+* Editor Spawn Menu.
+
+Now goes default readme.
 # Unity 3D metaballs
 Unity 3D implementation of marching cubes algorithm for rendering metaballs. Metaballs can be used for gameplay purposes (gels in Valve's Portal 2), or as a decoration, as shown in the image below. They can also be used to visualise various fields in physics (for example, each metaball can represent single point charge, and electrostatic potetial due to point charge equation can be used as a falloff function).
 
