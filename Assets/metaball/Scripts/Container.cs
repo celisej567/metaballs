@@ -7,6 +7,7 @@ public class Container : MonoBehaviour {
     public float safeZone = 0.8f;
     public float resolution = 0.2f;
     public float threshold = 1;
+    public float updateDelay = 0.03f;
     public ComputeShader computeShader;
     public bool calculateNormals = true;
     public Material material;
@@ -14,6 +15,7 @@ public class Container : MonoBehaviour {
     float lastsafeZone = 0.04f;
     float lastresolution = 0.15f;
     float lastthreshold = 1;
+    float nextUpdate;
     Vector3 lastscale = new Vector3(1,1,1);
 
     MetaBall[] balls; //hehe
@@ -27,7 +29,7 @@ public class Container : MonoBehaviour {
 
     public void Start() {
         balls = GetComponentsInChildren<MetaBall>();
-        
+        nextUpdate = Time.time;
         for (int i = 0; i<=balls.Length-1; i++)
         {
             lastPosBalls.Add(balls[i].transform.position);
@@ -62,29 +64,67 @@ public class Container : MonoBehaviour {
 
     public void LateUpdate() 
     {
-
-        if (Application.isPlaying)
+        if (Time.time >= nextUpdate)
         {
-
-            for (int i = 0; i <= balls.Length - 1; i++)
+            if (Application.isPlaying)
             {
-                if (lastPosBalls[i] != balls[i].transform.position)
+                for (int i = 0; i <= balls.Length - 1; i++)
                 {
-                    update = true;
-                    lastPosBalls[i] = balls[i].gameObject.transform.position;
+                    if (lastPosBalls[i] != balls[i].transform.position)
+                    {
+                        update = true;
+                        lastPosBalls[i] = balls[i].gameObject.transform.position;
+                    }
                 }
+
+                if (update || (lastsafeZone != safeZone) || (lastresolution != resolution) || (lastthreshold != threshold) || (lastscale != transform.localScale))
+                {
+                    if (grid == null || (lastscale != transform.localScale) || (resolution != lastresolution))
+                    {
+                        this.grid = new CubeGrid(this, this.computeShader);
+                    }
+
+                    this.grid.evaluateAll(balls);
+
+                    Mesh mesh = this.GetComponent<MeshFilter>().mesh;
+                    mesh.Clear();
+                    mesh.vertices = this.grid.vertices.ToArray();
+                    mesh.triangles = this.grid.getTriangles();
+
+                    if (this.calculateNormals)
+                    {
+                        mesh.RecalculateNormals();
+                    }
+
+                    lastsafeZone = safeZone;
+                    lastresolution = resolution;
+                    lastthreshold = threshold;
+                    lastscale = transform.localScale;
+                    update = false;
+                }
+
             }
-
-            if (update || (lastsafeZone!=safeZone) || (lastresolution != resolution) || (lastthreshold!=threshold) || (lastscale != transform.localScale))
+            else
             {
-                if (grid == null || (lastscale != transform.localScale) || (resolution != lastresolution))
-                {
-                    this.grid = new CubeGrid(this, this.computeShader);
-                }
+                balls = GetComponentsInChildren<MetaBall>();
+                if (balls == null)
+                    return;
+
+                if (GetComponent<MeshRenderer>().material != material)
+                    GetComponent<MeshRenderer>().material = material;
+
+                this.grid = new CubeGrid(this, this.computeShader);
 
                 this.grid.evaluateAll(balls);
+                Mesh mesh;
 
-                Mesh mesh = this.GetComponent<MeshFilter>().mesh;
+                mesh = this.GetComponent<MeshFilter>().mesh;
+                if (!Application.isPlaying && message)
+                {
+                    Debug.Log("If you got \"Please use MeshFilter.sharedMesh instead.\" warning - ignore it.");
+                    message = false;
+                }
+
                 mesh.Clear();
                 mesh.vertices = this.grid.vertices.ToArray();
                 mesh.triangles = this.grid.getTriangles();
@@ -93,44 +133,10 @@ public class Container : MonoBehaviour {
                 {
                     mesh.RecalculateNormals();
                 }
-
-                lastsafeZone = safeZone;
-                lastresolution = resolution;
-                lastthreshold = threshold;
-                lastscale = transform.localScale;
-                update = false;
-            }
-            
-        }
-        else
-        {
-            balls = GetComponentsInChildren<MetaBall>();
-            if (balls == null)
-                return;
-
-            if (GetComponent<MeshRenderer>().material != material)
-                GetComponent<MeshRenderer>().material = material;
-
-            this.grid = new CubeGrid(this, this.computeShader);
-
-            this.grid.evaluateAll(balls);
-            Mesh mesh;
-
-            mesh = this.GetComponent<MeshFilter>().mesh;
-            if (!Application.isPlaying && message)
-            {
-                Debug.Log("If you got \"Please use MeshFilter.sharedMesh instead.\" warning - ignore it.");
-                message = false;
             }
 
-            mesh.Clear();
-            mesh.vertices = this.grid.vertices.ToArray();
-            mesh.triangles = this.grid.getTriangles();
+            nextUpdate = Time.time + updateDelay;
 
-            if (this.calculateNormals)
-            {
-                mesh.RecalculateNormals();
-            }
         }
     }
-}
+    }
