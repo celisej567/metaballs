@@ -2,152 +2,177 @@
 using System.Collections;
 using System.Collections.Generic;
 
-struct GPUEdgeValues {
-    public float edge0Val, edge1Val, edge2Val, edge3Val, edge4Val, edge5Val, edge6Val, edge7Val;
-}
-
-struct GPUPositions {
-    public Vector3 centerPos;
-    public Vector3 edge0Pos, edge1Pos, edge2Pos, edge3Pos, edge4Pos, edge5Pos, edge6Pos, edge7Pos;
-}
-
-struct GPUBall {
-    public float factor;
-    public Vector3 position;
-}
-
-struct GPUEdgeVertices {
-    public int index;
-    public Vector3 edge0, edge1, edge2, edge3, edge4, edge5, edge6, edge7, edge8, edge9, edge10, edge11;
-};
-
-public class CubeGrid {
-    public List<Vector3> vertices;
-    public int width, height, depth;
-
-    private Container container;
-
-    private ComputeShader shader;
-    private int shaderKernel;
-
-    private ComputeBuffer positionsBuffer;
-    private ComputeBuffer valuesBuffer;
-    private ComputeBuffer metaballsBuffer;
-    private ComputeBuffer edgeMapBuffer;
-    private ComputeBuffer verticesBuffer;
-
-    private GPUPositions[] precomputedPositions;
-
-    private bool initized;
-
-    //
-    // Constructor
-    //
-
-    public CubeGrid(Container container, ComputeShader shader) {
-        this.container = container;
-        this.shader = shader;
-
-        this.width = Mathf.RoundToInt(container.transform.localScale.x / this.container.resolution);
-        this.height = Mathf.RoundToInt(container.transform.localScale.y / this.container.resolution);
-        this.depth = Mathf.RoundToInt(container.transform.localScale.z / this.container.resolution);
-
-        this.vertices = new List<Vector3>();
-
-        this.initized = false;
+namespace MetaBalls
+{
+    struct GPUEdgeValues
+    {
+        public float edge0Val, edge1Val, edge2Val, edge3Val, edge4Val, edge5Val, edge6Val, edge7Val;
     }
 
-    //
-    // Public methods
-    //
+    struct GPUPositions
+    {
+        public Vector3 centerPos;
+        public Vector3 edge0Pos, edge1Pos, edge2Pos, edge3Pos, edge4Pos, edge5Pos, edge6Pos, edge7Pos;
+    }
 
-    public void evaluateAll(MetaBall[] metaballs) {
-        if(!this.initized) {
+    struct GPUBall
+    {
+        public float factor;
+        public Vector3 position;
+    }
 
-            this.init();
-        }
+    struct GPUEdgeVertices
+    {
+        public int index;
+        public Vector3 edge0, edge1, edge2, edge3, edge4, edge5, edge6, edge7, edge8, edge9, edge10, edge11;
+    };
 
-        this.vertices.Clear();
-        
-        // write info about metaballs in format readable by compute shaders
-        GPUBall[] gpuBalls = new GPUBall[metaballs.Length];
-        for(int i = 0; i < metaballs.Length; i++) {
-            MetaBall metaball = metaballs[i];
-            gpuBalls[i].position = metaball.transform.localPosition;
-            gpuBalls[i].factor = metaball.factor;
-        }
-        
-        // magic happens here
-        GPUEdgeVertices[] edgeVertices = this.runComputeShader(gpuBalls);
+    public class CubeGrid
+    {
+        public List<Vector3> vertices;
+        public readonly int width, height, depth;
 
-        // perform rest of the marching cubes algorithm
-        for (int x = 0; x < this.width; x++)
+        private Container container;
+
+        private ComputeShader shader;
+        private int shaderKernel;
+
+        private ComputeBuffer positionsBuffer;
+        private ComputeBuffer valuesBuffer;
+        private ComputeBuffer metaballsBuffer;
+        private ComputeBuffer edgeMapBuffer;
+        private ComputeBuffer verticesBuffer;
+
+        private GPUPositions[] precomputedPositions;
+
+        private bool initized;
+
+        //
+        // Constructor
+        //
+
+        public CubeGrid(Container container, ComputeShader shader)
         {
-            for (int y = 0; y < this.height; y++)
+            this.container = container;
+            this.shader = shader;
+
+            this.width = Mathf.RoundToInt(container.transform.localScale.x / this.container.resolutionX);
+            this.height = Mathf.RoundToInt(container.transform.localScale.y / this.container.resolutionY);
+            this.depth = Mathf.RoundToInt(container.transform.localScale.z / this.container.resolutionZ);
+
+            this.vertices = new List<Vector3>(this.width * this.height * this.depth * 3);
+
+            this.initized = false;
+        }
+
+        //
+        // Public methods
+        //
+
+        public void evaluateAll(MetaBall[] metaballs)
+        {
+            if (!this.initized)
             {
-                for (int z = 0; z < this.depth; z++)
+
+                this.init();
+            }
+
+            this.vertices.Clear();
+
+            // write info about metaballs in format readable by compute shaders
+            GPUBall[] gpuBalls = new GPUBall[metaballs.Length];
+            for (int i = 0; i < metaballs.Length; i++)
+            {
+                MetaBall metaball = metaballs[i];
+                gpuBalls[i].position = metaball.transform.localPosition;
+                gpuBalls[i].factor = metaball.factor;
+            }
+
+            // magic happens here
+            GPUEdgeVertices[] edgeVertices = this.runComputeShader(gpuBalls);
+
+            // perform rest of the marching cubes algorithm
+            int hh = 0;
+            for (int x = 0; x < this.width; x++)
+            {
+                for (int y = 0; y < this.height; y++)
                 {
-                    this.updateVertices2(edgeVertices[x + this.width * (y + this.height * z)]);
+                    for (int z = 0; z < this.depth; z++)
+                    {
+                        this.updateVertices2(edgeVertices[x + this.width * (y + this.height * z)]);
+                    }
                 }
             }
+
+
         }
 
+        public int[] getTriangles()
+        {
+            int num = this.vertices.Count;
 
-    }
-    
-    public int[] getTriangles() {
-        int num = this.vertices.Count;
+            if (this.triangleBuffer == null)
+            {
+                // nothing in buffer, create it
+                this.triangleBuffer = new List<int>();
+                for (int i = 0; i < num; i++)
+                {
+                    this.triangleBuffer.Add(i);
+                }
 
-        if(this.triangleBuffer == null) {
-            // nothing in buffer, create it
-            this.triangleBuffer = new List<int>();
-            for(int i = 0; i < num; i++) {
-                this.triangleBuffer.Add(i);
+                return this.triangleBuffer.ToArray();
             }
+            else if (this.triangleBuffer.Count < num)
+            {
+                // missing elements in buffer, add them
+                for (int i = this.triangleBuffer.Count; i < num; i++)
+                {
+                    this.triangleBuffer.Add(i);
+                }
 
-            return this.triangleBuffer.ToArray();
-        } else if(this.triangleBuffer.Count < num) {
-            // missing elements in buffer, add them
-            for(int i = this.triangleBuffer.Count; i < num; i++) {
-                this.triangleBuffer.Add(i);
+                return this.triangleBuffer.ToArray();
             }
+            else if (this.triangleBuffer.Count == num)
+            {
+                // buffer is of perfect size, just return it
 
-            return this.triangleBuffer.ToArray();
-        } else if(this.triangleBuffer.Count == num) {
-            // buffer is of perfect size, just return it
+                return this.triangleBuffer.ToArray();
+            }
+            else
+            {
+                // buffer is too long, return slice
 
-            return this.triangleBuffer.ToArray();
-        } else {
-            // buffer is too long, return slice
-
-            return this.triangleBuffer.GetRange(0, num).ToArray();
+                return this.triangleBuffer.GetRange(0, num).ToArray();
+            }
         }
-    }
 
-    public void destroy() {
-        this.positionsBuffer.Release();
-        this.valuesBuffer.Release();
-        this.metaballsBuffer.Release();
-        this.edgeMapBuffer.Release();
-        this.verticesBuffer.Release();
-        this.triangleBuffer = null;
-    }
+        public void destroy()
+        {
+            this.positionsBuffer.Release();
+            this.valuesBuffer.Release();
+            this.metaballsBuffer.Release();
+            this.edgeMapBuffer.Release();
+            this.verticesBuffer.Release();
+            this.triangleBuffer = null;
+        }
 
-    //
-    // Setup
-    //
+        //
+        // Setup
+        //
 
-    private void init() {
-        this.instantiateEdgeMap();
-        this.instantiatePositionMap();
-        this.instantiateGPUPositions();
-        this.instantiateComputeShader();
+        private void init()
+        {
+            this.instantiateEdgeMap();
+            this.instantiatePositionMap();
+            this.instantiateGPUPositions();
+            this.instantiateComputeShader();
 
-        this.initized = true;
-    }
+            this.initized = true;
+        }
 
-    private void instantiateEdgeMap() {
-        this.edgeMap = new Vector3[] {
+        private void instantiateEdgeMap()
+        {
+            this.edgeMap = new Vector3[] {
             new Vector3(-1, -1, -1),
             new Vector3(1, -1, -1),
             new Vector3(1, 1, -1),
@@ -158,152 +183,185 @@ public class CubeGrid {
             new Vector3(-1, 1, 1)
         };
 
-        // scale edge map
-        for(int i = 0; i < 8; i++) {
-            this.edgeMap[i] /= 2;
-            this.edgeMap[i] = new Vector3(this.edgeMap[i].x / ((float) this.width),
-                this.edgeMap[i].y / ((float) this.height),
-                this.edgeMap[i].z / ((float) this.depth));
+            // scale edge map
+            for (int i = 0; i < 8; i++)
+            {
+                this.edgeMap[i] /= 2;
+                this.edgeMap[i] = new Vector3(this.edgeMap[i].x / ((float)this.width),
+                    this.edgeMap[i].y / ((float)this.height),
+                    this.edgeMap[i].z / ((float)this.depth));
+            }
         }
-    }
 
-    private void instantiatePositionMap() {
-        this.positionMap = new Vector3[width,height,depth];
+        private void instantiatePositionMap()
+        {
+            this.positionMap = new Vector3[width, height, depth];
 
-        for(int x = 0; x < this.width; x++) {
-            for(int y = 0; y < this.height; y++) {
-                for(int z = 0; z < this.depth; z++) {
+            for (int x = 0; x < this.width; x++)
+            {
+                for (int y = 0; y < this.height; y++)
+                {
+                    for (int z = 0; z < this.depth; z++)
+                    {
 
-                    float xCoord = (((float) x) / ((float) this.width)) - 0.475f ;
-                    float yCoord = (((float) y) / ((float) this.height)) - 0.475f;
-                    float zCoord = (((float) z) / ((float) this.depth)) - 0.46f;
+                        float xCoord = (((float)x) / ((float)this.width)) - 0.475f;
+                        float yCoord = (((float)y) / ((float)this.height)) - 0.475f;
+                        float zCoord = (((float)z) / ((float)this.depth)) - 0.46f;
 
-                    this.positionMap[x , y , z] = new Vector3(xCoord, yCoord, zCoord);
+                        this.positionMap[x, y, z] = new Vector3(xCoord, yCoord, zCoord);
+                    }
                 }
             }
         }
-    }
 
-    private void instantiateGPUPositions()
-    {
-        this.precomputedPositions = new GPUPositions[this.width * this.height * this.depth];
-
-        for (int x = 0; x < this.width; x++)
+        private void instantiateGPUPositions()
         {
-            for (int y = 0; y < this.height; y++)
+            this.precomputedPositions = new GPUPositions[this.width * this.height * this.depth];
+
+            for (int x = 0; x < this.width; x++)
             {
-                for (int z = 0; z < this.depth; z++)
+                for (int y = 0; y < this.height; y++)
                 {
-                    Vector3 centerPoint = this.positionMap[x, y, z];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].centerPos = centerPoint;
-                                                                                                 
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge0Pos = centerPoint + this.edgeMap[0];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge1Pos = centerPoint + this.edgeMap[1];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge2Pos = centerPoint + this.edgeMap[2];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge3Pos = centerPoint + this.edgeMap[3];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge4Pos = centerPoint + this.edgeMap[4];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge5Pos = centerPoint + this.edgeMap[5];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge6Pos = centerPoint + this.edgeMap[6];
-                    this.precomputedPositions[x + this.width * (y + this.height * z)].edge7Pos = centerPoint + this.edgeMap[7];
-                }                                                              
+                    for (int z = 0; z < this.depth; z++)
+                    {
+                        Vector3 centerPoint = this.positionMap[x, y, z];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].centerPos = centerPoint;
+
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge0Pos = centerPoint + this.edgeMap[0];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge1Pos = centerPoint + this.edgeMap[1];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge2Pos = centerPoint + this.edgeMap[2];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge3Pos = centerPoint + this.edgeMap[3];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge4Pos = centerPoint + this.edgeMap[4];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge5Pos = centerPoint + this.edgeMap[5];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge6Pos = centerPoint + this.edgeMap[6];
+                        this.precomputedPositions[x + this.width * (y + this.height * z)].edge7Pos = centerPoint + this.edgeMap[7];
+                    }
+                }
             }
         }
-    }
 
-    private void instantiateComputeShader() {
-        // setup buffers
-        this.positionsBuffer = new ComputeBuffer(this.precomputedPositions.Length, 108);
-        this.positionsBuffer.SetData(this.precomputedPositions);
+        private void instantiateComputeShader()
+        {
+            // setup buffers
+            this.positionsBuffer = new ComputeBuffer(this.precomputedPositions.Length, 108);
+            this.positionsBuffer.SetData(this.precomputedPositions);
 
-        this.edgeMapBuffer = new ComputeBuffer(8, 12);
-        this.edgeMapBuffer.SetData(this.edgeMap);
+            this.edgeMapBuffer = new ComputeBuffer(8, 12);
+            this.edgeMapBuffer.SetData(this.edgeMap);
 
-        this.verticesBuffer = new ComputeBuffer(this.precomputedPositions.Length, 148);
-        this.metaballsBuffer = new ComputeBuffer(this.precomputedPositions.Length, 16);
+            this.verticesBuffer = new ComputeBuffer(this.precomputedPositions.Length, 148);
+            this.metaballsBuffer = new ComputeBuffer(this.precomputedPositions.Length, 16);
 
-        // and assign them to compute shader buffer
-        this.shaderKernel = this.shader.FindKernel("Calculate");
+            // and assign them to compute shader buffer
+            this.shaderKernel = this.shader.FindKernel("Calculate");
 
-        this.shader.SetBuffer(this.shaderKernel, "positions", this.positionsBuffer);
-        this.shader.SetBuffer(this.shaderKernel, "metaballs", this.metaballsBuffer);
-        this.shader.SetBuffer(this.shaderKernel, "edgeMap", this.edgeMapBuffer);
-        this.shader.SetBuffer(this.shaderKernel, "edgeVertices", this.verticesBuffer);
-    }
-
-    //
-    // GPU metaball falloff function summator & part of marching cubes algorithm
-    //
-
-    private GPUEdgeVertices[] runComputeShader(GPUBall[] gpuBalls) {
-        // pass data to the compute shader
-        this.metaballsBuffer.SetData(gpuBalls);
-        this.shader.SetInt("numMetaballs", gpuBalls.Length);
-        this.shader.SetInt("width", this.width);
-        this.shader.SetInt("height", this.height);
-        this.shader.SetFloat("threshold", this.container.threshold);
-
-        // Run, Forrest, run!
-        this.shader.Dispatch(this.shaderKernel, this.width, this.height / 8, this.depth / 8);
-
-        // parse returned vertex data and return it
-        GPUEdgeVertices[] output = new GPUEdgeVertices[this.verticesBuffer.count];
-        this.verticesBuffer.GetData(output);
-        return output;
-    }
-
-    //
-    // Rest of marching cubes algorithm (on CPU)
-    //
-
-    private void updateVertices2(GPUEdgeVertices vert) {
-        int cubeIndex = vert.index;
-
-        for(int k = 0; triTable[cubeIndex][k] != -1; k += 3) {
-            this.vertices.Add(this.findVertex(vert, this.triTable[cubeIndex][k]));
-            this.vertices.Add(this.findVertex(vert, this.triTable[cubeIndex][k + 2]));
-            this.vertices.Add(this.findVertex(vert, this.triTable[cubeIndex][k + 1]));
+            this.shader.SetBuffer(this.shaderKernel, "positions", this.positionsBuffer);
+            this.shader.SetBuffer(this.shaderKernel, "metaballs", this.metaballsBuffer);
+            this.shader.SetBuffer(this.shaderKernel, "edgeMap", this.edgeMapBuffer);
+            this.shader.SetBuffer(this.shaderKernel, "edgeVertices", this.verticesBuffer);
         }
-    }
 
-    private Vector3 findVertex(GPUEdgeVertices vert, int i) {
-        if(i == 0) {
-            return vert.edge0;
-        } else if(i == 1) {
-            return vert.edge1;
-        } else if(i == 2) {
-            return vert.edge2;
-        } else if(i == 3) {
-            return vert.edge3;
-        } else if(i == 4) {
-            return vert.edge4;
-        } else if(i == 5) {
-            return vert.edge5;
-        } else if(i == 6) {
-            return vert.edge6;
-        } else if(i == 7) {
-            return vert.edge7;
-        } else if(i == 8) {
-            return vert.edge8;
-        } else if(i == 9) {
-            return vert.edge9;
-        } else if(i == 10) {
-            return vert.edge10;
-        } else {
-            return vert.edge11;
+        //
+        // GPU metaball falloff function summator & part of marching cubes algorithm
+        //
+
+        private GPUEdgeVertices[] runComputeShader(GPUBall[] gpuBalls)
+        {
+            // pass data to the compute shader
+            this.metaballsBuffer.SetData(gpuBalls);
+            this.shader.SetInt("numMetaballs", gpuBalls.Length);
+            this.shader.SetInt("width", this.width);
+            this.shader.SetInt("height", this.height);
+            this.shader.SetFloat("threshold", this.container.threshold);
+
+            // Run, Forrest, run!
+            this.shader.Dispatch(this.shaderKernel, this.width, this.height, this.depth);
+
+            // parse returned vertex data and return it
+            GPUEdgeVertices[] output = new GPUEdgeVertices[this.verticesBuffer.count];
+            this.verticesBuffer.GetData(output);
+            return output;
         }
-    }
 
-    //
-    // LOOKUP TABLES
-    //
+        //
+        // Rest of marching cubes algorithm (on CPU)
+        //
 
-    private List<int> triangleBuffer;
+        private void updateVertices2(GPUEdgeVertices vert)
+        {
+            int cubeIndex = vert.index;
 
-    private Vector3[,,] positionMap;
+            for (int k = 0; triTable[cubeIndex][k] != -1; k += 3)
+            {
+                this.vertices.Add(this.findVertex(vert, CubeGrid.triTable[cubeIndex][k]));
+                this.vertices.Add(this.findVertex(vert, CubeGrid.triTable[cubeIndex][k + 2]));
+                this.vertices.Add(this.findVertex(vert, CubeGrid.triTable[cubeIndex][k + 1]));
+            }
+        }
 
-    private Vector3[] edgeMap;
-    
-    private int[][] triTable = {
+        private Vector3 findVertex(GPUEdgeVertices vert, int i)
+        {
+            if (i == 0)
+            {
+                return vert.edge0;
+            }
+            else if (i == 1)
+            {
+                return vert.edge1;
+            }
+            else if (i == 2)
+            {
+                return vert.edge2;
+            }
+            else if (i == 3)
+            {
+                return vert.edge3;
+            }
+            else if (i == 4)
+            {
+                return vert.edge4;
+            }
+            else if (i == 5)
+            {
+                return vert.edge5;
+            }
+            else if (i == 6)
+            {
+                return vert.edge6;
+            }
+            else if (i == 7)
+            {
+                return vert.edge7;
+            }
+            else if (i == 8)
+            {
+                return vert.edge8;
+            }
+            else if (i == 9)
+            {
+                return vert.edge9;
+            }
+            else if (i == 10)
+            {
+                return vert.edge10;
+            }
+            else
+            {
+                return vert.edge11;
+            }
+        }
+
+        //
+        // LOOKUP TABLES
+        //
+
+        private List<int> triangleBuffer;
+
+        private Vector3[,,] positionMap;
+
+        private Vector3[] edgeMap;
+
+        static private readonly int[][] triTable = {
         new int[] {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
         new int[] {0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
         new int[] {0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
@@ -561,4 +619,5 @@ public class CubeGrid {
         new int[] {0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
         new int[] {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
     };
+    }
 }

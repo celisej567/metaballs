@@ -38,6 +38,7 @@ RWStructuredBuffer<Vertices> edgeVertices;
 
 int width;
 int height;
+
 int numMetaballs;
 
 float threshold;
@@ -176,12 +177,26 @@ Values zeroValuesStruct() {
 // field function evaluation
 //
 
+float QuakeFastSqrt(float original_number)
+{
+	float orig_half = 0.5f * original_number;
+
+	int i = (int) original_number;
+	i = 0x5f3759df - (i >> 1);
+	
+	original_number = (float)i;
+	original_number = original_number * ( 1.5f - ( orig_half * original_number * original_number));
+	return original_number;
+
+}
+
 float metaballFalloffFunction(float factor, float3 dist) {
 #ifdef GENERIC_METABALL_FUNCTION
 	return factor / (dist.x * dist.x + dist.y * dist.y + dist.z * dist.z);
 #endif
 #ifdef ELECTRIC_POTENTIAL_FUNCTION
-	return 8.987551788e9 * factor / sqrt(dist.x * dist.x + dist.y * dist.y + dist.z * dist.z);
+	//return 8.987551788e9 * factor / sqrt(dist.x * dist.x + dist.y * dist.y + dist.z * dist.z);
+	return 8.987551788e9 * factor / QuakeFastSqrt(dist.x * dist.x + dist.y * dist.y + dist.z * dist.z);
 #endif
 }
 
@@ -223,7 +238,10 @@ Values evaluateFieldFunction(int pos) {
 
 [numthreads(8,8,8)]
 void Calculate(uint3 id : SV_DispatchThreadID) {
+
+
 	int pos = id.x + width * (id.y + height * id.z);
+
 
 	// find scalar values of a field on this position
 	Values edgeValues = evaluateFieldFunction(pos);
